@@ -1,0 +1,138 @@
+Two Strategies to Integrate Karate Tests from a Separate GitLab Repository into Main Project Pipeline
+
+Objective
+
+To integrate Karate tests maintained in a separate GitLab repository (e.g., integration-tests-karate) into the CI/CD pipeline of a main Java project repository. The goal is to trigger and run the Karate tests as part of the main project’s pipeline execution.
+
+
+---
+
+Strategy 1: Triggering a Pipeline in the Karate Repo (Recommended)
+
+Step-by-Step Setup
+
+1. In the Karate Repo
+
+Ensure the .gitlab-ci.yml defines a working pipeline (e.g., a job that runs Karate tests).
+
+Use workflow: rules to limit execution to trigger-only:
+
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
+    - when: never
+
+Define your Karate test job:
+
+
+karate-tests:
+  stage: test
+  script:
+    - mvn clean test -Dkarate.env=$ENVIRONMENT
+  artifacts:
+    when: always
+    paths:
+      - target/karate-reports
+
+2. In the Main Project .gitlab-ci.yml
+
+Add the following job:
+
+
+karate-trigger:
+  stage: IntegrationTest
+  script:
+    - echo "Triggering Karate tests in remote repo"
+    - |
+      curl --request POST \
+        --form token=$KARATE_TRIGGER_TOKEN \
+        --form ref=main \
+        --form variables[ENVIRONMENT]=$TARGET_ENV \
+        https://gitlab.com/api/v4/projects/YOUR_KARATE_PROJECT_ID/trigger/pipeline
+  rules:
+    - if: '$RUN_KARATE == "true"'
+
+3. CI/CD Variables to Add in Main Project
+
+KARATE_TRIGGER_TOKEN (GitLab trigger token from the Karate repo)
+
+TARGET_ENV (e.g., dev, qa)
+
+RUN_KARATE = true
+
+
+4. Generate Trigger Token
+
+Go to Karate Repo > Settings > CI/CD > Pipeline Triggers
+
+Create a new trigger token
+
+Use the generated token value as KARATE_TRIGGER_TOKEN in the main repo
+
+
+
+---
+
+Strategy 2: Include Karate Template and Clone Feature Files Manually
+
+Step-by-Step Setup
+
+1. In the Karate Repo
+
+Create a job template file (e.g., karate-runner-template.yml):
+
+
+karate-tests:
+  stage: IntegrationTest
+  tags:
+    - shared-runner
+  script:
+    - git clone https://oauth2:$KARATE_REPO_TOKEN@gitlab.com/your-group/integration-tests-karate.git
+    - cd integration-tests-karate
+    - mvn clean test -Dkarate.env=$TARGET_ENV
+  artifacts:
+    when: always
+    paths:
+      - integration-tests-karate/target/karate-reports
+  rules:
+    - if: '$RUN_KARATE == "true"'
+
+2. In the Main Project .gitlab-ci.yml
+
+include:
+  - project: your-group/integration-tests-karate
+    file: karate-runner-template.yml
+
+stages:
+  - Build
+  - Sonar
+  - IntegrationTest
+  - Deploy
+
+3. CI/CD Variables to Add in Main Project
+
+RUN_KARATE = true
+
+TARGET_ENV = dev / qa
+
+KARATE_REPO_TOKEN = GitLab Personal Access Token with read-repository access
+
+
+Generate a GitLab Personal Access Token:
+
+Go to Your Profile > Access Tokens
+
+Enable read_repository
+
+Use it as a masked CI/CD variable in the main project
+
+
+
+---
+
+Recommendation
+
+Use Strategy 1 if you want a cleaner decoupled design where the Karate project manages its own tests.
+
+Use Strategy 2 if you want full control inside the main pipeline but are okay with cloning another repo mid-job.
