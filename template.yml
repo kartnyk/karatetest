@@ -1,0 +1,74 @@
+CI/CD Integration Strategy for Karate with Modular GitLab Pipeline
+
+Objective
+
+This document outlines the steps to modularly integrate Karate integration tests into a Java project's GitLab CI/CD pipeline. The Karate tests are maintained in a dedicated GitLab repository (integration-tests-karate) and will be triggered from the main Java project pipeline using include: syntax in .gitlab-ci.yml.
+
+Requirements
+
+Karate tests live in a separate GitLab repo: integration-tests-karate
+
+Main project pipeline (e.g., Java Spring Boot) should trigger Karate tests as a stage
+
+The Karate test integration should be modular and reusable using GitLab CI include:
+
+
+
+---
+
+Step-by-Step Setup
+
+1. Karate Project: karate-runner-template.yml
+
+In the integration-tests-karate repo, create the following template file:
+
+# karate-runner-template.yml
+
+karate-tests:
+  stage: IntegrationTest
+  tags:
+    - karate-runner  # Adjust to match your GitLab runner tag
+  script:
+    - echo "Starting Karate integration tests for $TARGET_ENV environment"
+    - mvn clean test -Dkarate.env=$TARGET_ENV
+  artifacts:
+    when: always
+    paths:
+      - target/karate-reports
+    expire_in: 7 days
+  rules:
+    - if: '$RUN_KARATE == "true"'
+
+2. Main Project: .gitlab-ci.yml
+
+In your Java project repo, update .gitlab-ci.yml as follows:
+
+stages:
+  - Build
+  - Sonar
+  - IntegrationTest
+  - Publish
+
+include:
+  - project: your-group/integration-tests-karate
+    file: karate-runner-template.yml
+
+Replace your-group/integration-tests-karate with the actual GitLab namespace/project path.
+
+3. GitLab CI/CD Variables (Main Project)
+
+Define the following variables in Settings > CI/CD > Variables of the main project:
+
+
+---
+
+Optional: Pass Tags or Endpoint Variables
+
+To pass Karate tags or base URLs:
+
+In karate-runner-template.yml:
+
+script:
+  - mvn clean test -Dkarate.env=$TARGET_ENV -Dkarate.tag=$KARATE_TAG
+
+Add KARATE_TAG as a variable in your main project.
