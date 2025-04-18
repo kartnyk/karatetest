@@ -1,106 +1,84 @@
-Files in the Karate Repo (integration-tests-karate)
+Karate CI/CD Setup for Scheduled Test Execution
 
-1. .gitlab-ci.yml
+Objective
 
-This is the primary pipeline file in the Karate repo:
+To configure the integration-tests-karate GitLab repository to run Karate integration tests on a scheduled basis only, such as nightly runs, using GitLab CI/CD.
 
-workflow:
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "trigger"'
-    - when: never
+
+---
+
+Final .gitlab-ci.yml for Scheduled Karate Test Runs
 
 karate-tests:
   stage: test
   script:
-    - echo "Running Karate tests for environment: $ENVIRONMENT"
+    - echo "Running Karate tests on schedule..."
     - mvn clean test -Dkarate.env=$ENVIRONMENT
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: always
+    - when: never
   artifacts:
     when: always
     paths:
       - target/karate-reports
     expire_in: 7 days
 
-Purpose:
+Explanation:
 
-Ensures the pipeline only runs when triggered from another project.
+rules: ensure that the job only runs if the pipeline is started by a GitLab schedule.
 
-Executes Karate tests using the specified ENVIRONMENT.
+when: never prevents execution for any other pipeline source like push, merge, or trigger.
 
-
-
----
-
-2. karate-trigger-template.yml
-
-This template file allows external projects to trigger the Karate pipeline.
-
-trigger-karate-tests:
-  stage: IntegrationTest
-  script:
-    - echo "Triggering Karate test pipeline in integration-tests-karate..."
-    - |
-      curl --request POST \
-        --form token=$KARATE_TRIGGER_TOKEN \
-        --form ref=$KARATE_TRIGGER_BRANCH \
-        --form variables[ENVIRONMENT]=$TARGET_ENV \
-        https://gitlab.com/api/v4/projects/$KARATE_PROJECT_ID/trigger/pipeline
-  rules:
-    - if: '$RUN_KARATE == "true"'
-
-Purpose:
-
-Makes the Karate pipeline triggerable from other repositories using include:.
-
-Accepts environment variables and trigger tokens securely.
-
-
-> Note: This file should not be included in the Karate repo’s .gitlab-ci.yml.
-
+artifacts: preserve the Karate test reports for download or review later.
 
 
 
 ---
 
-Files in the Main Java Project
+How to Create a Scheduled Pipeline in GitLab
 
-3. .gitlab-ci.yml
+1. Go to the GitLab Project: Navigate to the integration-tests-karate project in your GitLab instance.
 
-Modify your main Java project's pipeline like this:
 
-include:
-  - project: your-group/integration-tests-karate
-    file: karate-trigger-template.yml
+2. Open Schedules: In the left sidebar, go to: CI/CD > Schedules
 
-stages:
-  - Build
-  - Sonar
-  - IntegrationTest
-  - Deploy
 
-Purpose:
+3. Click “New schedule”:
 
-Pulls in the trigger job from the Karate repo using GitLab CI include:.
+Description: Nightly Karate Tests
 
-Keeps the main repo CI clean and modular.
+Interval pattern: 0 1 * * * (every day at 1:00 AM UTC)
+
+Target branch: main (or the branch to run tests from)
+
+Timezone: Select your preferred timezone
+
+
+
+4. Set Pipeline Variables: Add a new variable:
+
+Key: ENVIRONMENT
+
+Value: qa (or any target environment like dev, staging)
+
+
+
+5. Save the Schedule: GitLab will now automatically trigger the pipeline at the scheduled time, and it will run only the karate-tests job.
+
 
 
 
 ---
 
-4. CI/CD Variables (in the Java Project)
+Benefits
 
-Set the following variables under Settings > CI/CD > Variables:
+No manual triggers or push events needed.
 
+Keeps your integration tests isolated and automated.
 
----
-
-Summary
-
-Karate repo owns the test logic and only runs tests when triggered.
-
-Main Java project includes a clean, reusable trigger job from the Karate repo.
-
-The structure is modular, secure, and promotes separation of concerns.
+Ensures clean resource usage, as no unnecessary pipelines will be run.
 
 
-This setup makes it easy to reuse the Karate test trigger logic across multiple services and environments while keeping pipeline logic centralized.
+This setup is ideal for maintaining a nightly or weekly regression suite using Karate, fully managed by GitLab CI/CD schedules.
+
